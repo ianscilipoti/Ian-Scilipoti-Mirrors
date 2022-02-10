@@ -3,8 +3,7 @@ let draggable
 
 let sketch1 = new p5(( s ) => {
 
-  //animation
-  const rayRevealSpeed = 10;
+
 
   //color information
   const wallColor = s.color(0, 0, 255);
@@ -17,6 +16,7 @@ let sketch1 = new p5(( s ) => {
   const gemSize = 20;
 
   const reflectionRange = 2;//number of reflection cells to render on either side of real box
+  const centerCell = reflectionRange;//renaming this for readability. the reflection range number is also the index of the center cell
 
     //---------------------- make these vectors
   const boxWidth = 200;
@@ -25,6 +25,10 @@ let sketch1 = new p5(( s ) => {
   const boxOpeningSize = 20;
   const wallThickness = 3;
 
+  //interaction
+  const rayRevealSpeed = 0.4;
+  let ray;
+
   class RaySegment {
     constructor(origin, delta) {
       this.origin = origin;
@@ -32,38 +36,45 @@ let sketch1 = new p5(( s ) => {
       this.visiblePercentage = 0;
     }
 
-    restartDrawing = () => {
-      this.visiblePercentage = 0;
-    }
 
     getVisibleEndpoint = () => {
-      return origin.add(delta.mult(this.visiblePercentage));
+      return p5.Vector.add(this.origin, p5.Vector.mult(this.delta, this.visiblePercentage));
     }
 
-    continueDrawing = () => {
+    draw = () => {
       //the coordinate of the end of the ray that's visible so far
       const visibleEndpoint = this.getVisibleEndpoint();
-
       s.push();
+      s.stroke(gemColor);
+      s.strokeWeight(3);
+
       s.line(this.origin.x, this.origin.y, visibleEndpoint.x, visibleEndpoint.y);
       s.pop();
+    }
 
+    animate = () => {
       this.visiblePercentage += (s.deltaTime / this.delta.mag()) * rayRevealSpeed;
+      this.visiblePercentage = Math.min(1, this.visiblePercentage);
     }
   }
 
-  s.setup = () => {
+  //get mouse direction from the REAL gem position (center grid cell)
+  let getMousePositionAtCell = (x, y) => {
+    return s.createVector(s.mouseX - boxWidth * x, s.mouseY - boxHeight * y);
+  }
+  
+  //reset ray when mouse is clicked
+  s.mouseClicked = () => {
+    ray = new RaySegment(gemPosition, getMousePositionAtCell(centerCell, centerCell).sub(gemPosition));
+  }
 
+  s.setup = () => {
     const canvasWidth = numCells * boxWidth;
     const canvasHeight = numCells * boxHeight;
     s.createCanvas(canvasWidth, canvasHeight);
-
-    for (let x = 0; x < numCells; x ++)
-    {
-        let xCentered = x - reflectionRange;
-        let xScaled = (1 - (xCentered & 1)) * 2 - 1;
-        console.log((1 - (xCentered & 1)) * 2 - 1);
-    }
+    s.frameRate(30);
+    //reset 
+    ray = new RaySegment(gemPosition, s.createVector(100, 200));
   };
 
   //apply the appropriate transformation to render in the correct offset / flipping for a particular cell
@@ -71,12 +82,12 @@ let sketch1 = new p5(( s ) => {
   //x: x coord of the cell, assume x=0 is not flipped
   let pushGridCellTransformation = (x, y) => {
     //---------not ideal.. recalculating this value here
-    let xCentered = x - reflectionRange;//make the center cell with the "real" box be at x=0, y=0
-    let yCentered = y - reflectionRange;
+    let centeredX = x - reflectionRange;//make the center cell with the "real" box be at x=0, y=0
+    let centeredY = y - reflectionRange;
     //move coordinate system to cell position and adjust scale to flip 
     s.push();
-    let xScale = (1 - (xCentered & 1)) * 2 - 1;
-    let yScale = (1 - (yCentered & 1)) * 2 - 1;        
+    let xScale = (1 - (centeredX & 1)) * 2 - 1;
+    let yScale = (1 - (centeredY & 1)) * 2 - 1;        
     s.translate(x * boxWidth + boxWidth / 2, y * boxHeight + boxHeight / 2);
     s.scale(xScale, yScale);
     s.translate(-boxWidth/2, -boxHeight/2);
@@ -86,8 +97,10 @@ let sketch1 = new p5(( s ) => {
   let renderBox = (isRealBox) => {
     //render walls
     s.rect(0, 0, boxWidth, wallThickness);//top wall
-    s.rect(0, boxHeight - wallThickness, boxWidth / 2 - boxOpeningSize / 2, wallThickness);//bottom wall 1
-    s.rect(boxWidth/2 + boxOpeningSize, boxHeight - wallThickness, boxWidth / 2 - boxOpeningSize, wallThickness);//bottom wall 2
+
+    s.rect(0,                           boxHeight - wallThickness, boxWidth / 2 - boxOpeningSize / 2, wallThickness);//bottom wall 1
+    s.rect(boxWidth/2 + boxOpeningSize/2, boxHeight - wallThickness, boxWidth / 2 - boxOpeningSize / 2, wallThickness);//bottom wall 2
+
     s.rect(0, 0, wallThickness, boxHeight);
     s.rect(boxWidth - wallThickness, 0, wallThickness, boxHeight);
     //render boundary black line
@@ -100,40 +113,41 @@ let sketch1 = new p5(( s ) => {
 
   s.draw = () => {
     s.background(255);
+    //draw ray
+    pushGridCellTransformation(centerCell, centerCell);
+    ray.draw();
+    ray.animate();
+    s.pop();
+
+
+    //draw grid
     s.noStroke();
     for (let x = 0; x < numCells; x ++)
     {
       for (let y = 0; y < numCells; y ++)
       {
-        let xCentered = x - reflectionRange;//make the center cell with the "real" box be at x=0, y=0
-        let yCentered = y - reflectionRange;
+        let centeredX = x - reflectionRange;//make the center cell with the "real" box be at x=0, y=0
+        let centeredY = y - reflectionRange;
 
         pushGridCellTransformation(x, y);
+          const isRealBox = centeredX == 0 && centeredY == 0; //is this the real box? as opposed to the reflections
+          if (isRealBox)
+          {
+            s.fill(wallColor);
+          }
+          else
+          {
+            s.fill(s.lerpColor(bgColor, wallColor, reflectionVisibility));
+          }
+          
+          renderBox(isRealBox);
 
-        const isRealBox = xCentered == 0 && yCentered == 0; //is this the real box? as opposed to the reflections
-        if (isRealBox)
-        {
-          s.fill(wallColor);
-        }
-        else
-        {
-          s.fill(s.lerpColor(bgColor, wallColor, reflectionVisibility));
-        }
-        
-        renderBox(isRealBox);
-
-        //draw gem
-        s.push();
-        s.fill(gemColor);
-        s.ellipse(gemPosition.x, gemPosition.y, gemSize, gemSize)
+          //draw gem
+          s.push();
+          s.fill(gemColor);
+          s.ellipse(gemPosition.x, gemPosition.y, gemSize, gemSize)
+          s.pop();        
         s.pop();
-
-        
-
-        // s.rect(s.mouseX, s.mouseY, 10, 10);
-       
-        s.pop();
-        
       }
     }
 
