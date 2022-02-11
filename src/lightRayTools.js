@@ -1,7 +1,8 @@
 import {checkIntersection, colinearPointWithinSegment} from 'line-intersect';
 import {Vector} from 'p5'
 
-const maxReflections = 30;//for safety 
+const maxReflections = 20;//for safety 
+const extremelyLargeConst = 10000;
 
 export class Segment {
     constructor(x1, y1, x2, y2) {
@@ -12,7 +13,7 @@ export class Segment {
     }
     //normal being orthogonal and facing left of the vector from point 1 to point 2 
     getNormal = () => {
-        return new Vector(y1 - y2, x2 - x1);
+        return new Vector(this.y1 - this.y2, this.x2 - this.x1);
     }
 }
 
@@ -20,26 +21,29 @@ export class LightRay {
     constructor(origin, direction) {
         this.origin = origin;
         this.direction = direction;
+        //essentially a ray. An endpoint extending out far past the sketch area
+        this.endPoint = Vector.add(this.origin, Vector.mult(this.direction, extremelyLargeConst));
     //   this.visiblePercentage = 0;
         this.reflection = null;//the next segment formed if a reflection happens
     }
 
-    propagateRay = (mirrorSegments, numReflections) => {
+    propagate = (mirrorSegments, numReflections, ignoreSegment) => {
         //need an endpoint to use line-intersect 
-        const extremelyLargeConst = 10000;
-        //essentially a ray. A line segment extending out far past the sketch area
-        const tempEndPoint = Vector.add(this.origin, Vector.mult(this.direction, extremelyLargeConst));
         
+                
         let nearesetIntersectionDist = extremelyLargeConst;
         let nearestIntersectedSegment = null;
         let nearestIntersection = null;
 
         //calculate intersections and find closest intersection
-        for (let mSeg in mirrorSegments) {
-            const result = checkIntersection(mSeg.x1, mSeg.y1, mSeg.x2, mSeg.y2, origin.x, origin.y, tempEndPoint.x, tempEndPoint.y);
+        for (let mSeg of mirrorSegments) {
+            if (mSeg === ignoreSegment) {
+                continue;//used to avoid ray intersecting with most recently intersected segment
+            }
+            const result = checkIntersection(mSeg.x1, mSeg.y1, mSeg.x2, mSeg.y2, this.origin.x, this.origin.y, this.endPoint.x, this.endPoint.y);
             if (result.type === 'intersecting'){
                 const intersectionPoint = new Vector(result.point.x, result.point.y);
-                const intersectionDist = Vector.dist(origin, intersectionPoint);
+                const intersectionDist = Vector.dist(this.origin, intersectionPoint);
                 if (intersectionDist < nearesetIntersectionDist) {
                     nearesetIntersectionDist = intersectionDist;
                     nearestIntersection = intersectionPoint;
@@ -53,8 +57,18 @@ export class LightRay {
             const normal = nearestIntersectedSegment.getNormal();
             const newDirection = this.direction.copy().reflect(normal);
             this.reflection = new LightRay(nearestIntersection, newDirection);
-            this.reflection.propagateRay(mirrorSegments, numReflections+1);
+            this.reflection.propagate(mirrorSegments, numReflections+1, nearestIntersectedSegment);
         }
+    }
+
+    getEndPoint = () => {
+        if (this.reflection === null) {
+            return this.endPoint;
+        }
+        else {
+            return this.reflection.origin;
+        }
+
     }
 
     // getVisibleEndpoint = () => {
