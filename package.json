@@ -1,0 +1,28 @@
+{
+  "name": "brilliant-takehome-ian-scilipoti",
+  "version": "1.0.0",
+  "description": "Takehome for Brilliant",
+  "private": true,
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "webpack"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ianscilipoti/Ian-Scilipoti-Mirrors.git"
+  },
+  "author": "Ian Scilipoti",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ianscilipoti/Ian-Scilipoti-Mirrors/issues"
+  },
+  "homepage": "https://github.com/ianscilipoti/Ian-Scilipoti-Mirrors#readme",
+  "dependencies": {
+    "line-intersect": "^3.0.0",
+    "p5": "^1.4.1"
+  },
+  "devDependencies": {
+    "webpack": "^5.68.0",
+    "webpack-cli": "^4.9.2"
+  }
+}
