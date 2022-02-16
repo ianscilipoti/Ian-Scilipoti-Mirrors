@@ -2,13 +2,14 @@ import p5, {Vector} from 'p5'
 import {Segment, LightRay} from './lightRayTools.js'
 //TODO:
 //address inconsistencies with vectors and pairs of variables 
-//add geometry class
 //add ray renderer 
 //better transparency for reflections
+//fix getEndpoint in lightrayTools. doesn't make sense with ray definition
 
 let sketch1 = new p5(( s ) => {
   //color information
-  const wallColor = s.color(0, 0, 255);
+  const reflectiveWallColor = s.color(0, 0, 255);
+  const matteWallColor = s.color(0, 125, 125);
   const bgColor = s.color(255, 255, 255);
   const reflectionVisibility = 0.1;
   const gemColor = s.color(255, 0, 0);
@@ -31,16 +32,17 @@ let sketch1 = new p5(( s ) => {
   const wallThickness = 3;
 
   //segments that make up the wall
-  const reflectiveSegments = [
-    new Segment(0, 0, boxWidth, 0),//top segment
-    new Segment(boxWidth, 0, boxWidth, boxHeight),//right segment
-    new Segment(0, 0, 0, boxHeight),//left segment
+  const boxSegments = [
+    new Segment(0, 0, boxWidth, 0, true),//top segment
+    new Segment(boxWidth, 0, boxWidth, boxHeight, true),//right segment
+    new Segment(0, 0, 0, boxHeight, true),//left segment
     
-    new Segment(0, boxHeight, boxWidth/2 - boxOpeningSize/2, boxHeight), //lower segments
-    new Segment(boxWidth/2 + boxOpeningSize/2, boxHeight, boxWidth, boxHeight),
+    new Segment(0, boxHeight, boxWidth/2 - boxOpeningSize/2, boxHeight, true), //lower segments
+    new Segment(boxWidth/2 + boxOpeningSize/2, boxHeight, boxWidth, boxHeight, true),
   ];
 
-  let matteSegments = [];//these will be populated in setup
+  let barrierSegments = [];//these will be populated in setup
+  let allSegments = [];//these will be populated in setup
 
 
   //interaction
@@ -56,7 +58,8 @@ let sketch1 = new p5(( s ) => {
       this.rayToRender = rayToRender;
       this.color = color;
       this.rayRevealSpeed = 0.4;
-      this.rayLength = Vector.dist(rayToRender.getEndPoint(), rayToRender.origin);
+      this.rayLength = this.rayToRender.getLength();//cache these so they don't need to be calculated every frame
+      this.totalRayLength = this.rayToRender.getTotalLength();
       this.renderContinuation = renderContinuation;
 
       if (this.rayToRender.reflection !== null) {
@@ -85,13 +88,9 @@ let sketch1 = new p5(( s ) => {
     }
 
     animate = () => {
-      if (this.visibleLength < this.rayLength || this.renderContinuation) {
-        this.visibleLength = this.visibleLength + s.deltaTime * this.rayRevealSpeed, this.rayLength;
-
-        //if we aren't rendering a continuation, ensure the visible length does not exceed the length of the ray
-        if (!this.renderContinuation) {
-          this.visibleLength = Math.min(this.visibleLength, this.rayLength);
-        }
+      const lengthToRender = this.renderContinuation ? this.totalRayLength : this.rayLength;
+      if (this.visibleLength < lengthToRender) {
+        this.visibleLength = Math.min(this.visibleLength + s.deltaTime * this.rayRevealSpeed, lengthToRender);
       }
       //when the visible length exceeds the ray length, render the next ray
       if (this.reflectionRenderer !== null && this.visibleLength >= this.rayLength) {
@@ -107,8 +106,8 @@ let sketch1 = new p5(( s ) => {
 
   let resetLightRay = (direction) => {
     ray = new LightRay(eyePosition, direction);
-    ray.propagate(reflectiveSegments, 0);//start reflecting this ray off of the wall segments
-    rayRenderer = new LightRayRenderer(ray, eyeColor, true);
+    ray.propagate(allSegments, 0);//start reflecting / colliding this ray off of the wall segments
+    rayRenderer = new LightRayRenderer(ray, eyeColor, !ray.isTermination);
   }
 
   //apply the appropriate transformation to render in the correct offset / flipping for a particular cell
@@ -135,6 +134,21 @@ let sketch1 = new p5(( s ) => {
     resetLightRay(getMousePositionAtCell(centerCell, centerCell).sub(eyePosition));
   }
 
+  s.addCircularBarrier = (x, y, radius) => {
+    //add segments forming a regular polygon to stop ray at gem
+    const collisionPolygonSides = 8;
+    for(let i = 0; i < collisionPolygonSides; i ++) {
+      const thisAngle = (i / parseFloat(collisionPolygonSides)) * Math.PI * 2;
+      const nextAngle = ((i+1) / parseFloat(collisionPolygonSides)) * Math.PI * 2;
+
+      barrierSegments.push(new Segment(
+        Math.cos(thisAngle) * radius + x, 
+        Math.sin(thisAngle) * radius + y, 
+        Math.cos(nextAngle) * radius + x, 
+        Math.sin(nextAngle) * radius + y, false));
+    }
+  }
+
   s.setup = () => {
     const canvasWidth = numCells * boxWidth;
     const canvasHeight = numCells * boxHeight;
@@ -142,19 +156,10 @@ let sketch1 = new p5(( s ) => {
 
     resetLightRay(s.createVector(100, 200));
 
-    //add segments forming a regular polygon to stop ray at gem
-    const collisionPolygonSides = 8;
-    const collisionPolygonRadius = gemSize / 2;
-    for(let i = 0; i < collisionPolygonSides; i ++) {
-      const thisAngle = (i / parseFloat(cllisionPolygonSides)) * Math.PI * 2;
-      const nextAngle = ((i+1) / parseFloat(cllisionPolygonSides)) * Math.PI * 2;
+    s.addCircularBarrier(gemPosition.x, gemPosition.y, gemSize/2);
+    // s.addCircularBarrier(eyePosition.x, eyePosition.y, eyeSize/2);
 
-      matteSegments.push(new Segment(
-        Math.cos(thisAngle) * collisionPolygonRadius, 
-        Math.sin(thisAngle) * collisionPolygonRadius, 
-        Math.cos(nextAngle) * collisionPolygonRadius, 
-        math.sin(nextAngle) * collisionPolygonRadius));
-    } 
+    allSegments = boxSegments.concat(barrierSegments);
   };
 
   s.draw = () => {
@@ -175,8 +180,8 @@ let sketch1 = new p5(( s ) => {
           //render box walls
           s.push();
           s.strokeWeight(3);
-          s.stroke(wallColor);
-          for (let wallSeg of reflectiveSegments) {
+          for (let wallSeg of boxSegments) {
+            s.stroke(wallSeg.reflective ? reflectiveWallColor : matteWallColor);
             s.line(wallSeg.x1, wallSeg.y1, wallSeg.x2, wallSeg.y2)
           }
           s.pop();
