@@ -20,7 +20,7 @@ export class Segment {
 export class LightRay {
     constructor(origin, direction) {
         this.origin = origin;
-        this.direction = direction;
+        this.direction = Vector.normalize(direction);
         //essentially a ray. An endpoint extending out far past the sketch area
         this.endPoint = Vector.add(this.origin, Vector.mult(this.direction, extremelyLargeConst));
     //   this.visiblePercentage = 0;
@@ -61,6 +61,7 @@ export class LightRay {
         }
     }
 
+    //returns either a distant 
     getEndPoint = () => {
         if (this.reflection === null) {
             return this.endPoint;
@@ -70,24 +71,4 @@ export class LightRay {
         }
 
     }
-
-    // getVisibleEndpoint = () => {
-    //   return p5.Vector.add(this.origin, p5.Vector.mult(this.delta, this.visiblePercentage));
-    // }
-
-    // draw = () => {
-    //   //the coordinate of the end of the ray that's visible so far
-    //   const visibleEndpoint = this.getVisibleEndpoint();
-    //   s.push();
-    //   s.stroke(gemColor);
-    //   s.strokeWeight(3);
-
-    //   s.line(this.origin.x, this.origin.y, visibleEndpoint.x, visibleEndpoint.y);
-    //   s.pop();
-    // }
-
-    // animate = () => {
-    //   this.visiblePercentage += (s.deltaTime / this.delta.mag()) * rayRevealSpeed;
-    //   this.visiblePercentage = Math.min(1, this.visiblePercentage);
-    // }
   }

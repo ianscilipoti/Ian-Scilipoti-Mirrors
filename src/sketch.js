@@ -10,12 +10,16 @@ let sketch1 = new p5(( s ) => {
   //color information
   const wallColor = s.color(0, 0, 255);
   const bgColor = s.color(255, 255, 255);
-  const reflectionVisibility = 0.2;
+  const reflectionVisibility = 0.1;
   const gemColor = s.color(255, 0, 0);
+  const eyeColor = s.color(0, 0, 255);
 
-  //geometry information
+  //scene information
   const gemPosition = s.createVector(30, 20);
   const gemSize = 20;
+
+  const eyePosition = s.createVector(100, 140);
+  const eyeSize = 20;
 
   const reflectionRange = 2;//number of reflection cells to render on either side of real box
   const centerCell = reflectionRange;//renaming this for readability. the reflection range number is also the index of the center cell
@@ -26,6 +30,7 @@ let sketch1 = new p5(( s ) => {
   const boxOpeningSize = 50;
   const wallThickness = 3;
 
+  //segments that make up the wall
   const reflectiveSegments = [
     new Segment(0, 0, boxWidth, 0),//top segment
     new Segment(boxWidth, 0, boxWidth, boxHeight),//right segment
@@ -35,14 +40,65 @@ let sketch1 = new p5(( s ) => {
     new Segment(boxWidth/2 + boxOpeningSize/2, boxHeight, boxWidth, boxHeight),
   ];
 
+  let matteSegments = [];//these will be populated in setup
+
+
   //interaction
-  const rayRevealSpeed = 0.4;
   let ray;
+  let rayRenderer;
+  let rayContinuation;
 
 
+  //a wrapper for a lightRay object. it allows for drawing and animating a light ray 
+  class LightRayRenderer {
+    constructor(rayToRender, color, renderContinuation) {
+      this.visibleLength = 0;
+      this.rayToRender = rayToRender;
+      this.color = color;
+      this.rayRevealSpeed = 0.4;
+      this.rayLength = Vector.dist(rayToRender.getEndPoint(), rayToRender.origin);
+      this.renderContinuation = renderContinuation;
 
+      if (this.rayToRender.reflection !== null) {
+        this.reflectionRenderer = new LightRayRenderer(this.rayToRender.reflection, color, false);
+      }
+      else {
+        this.reflectionRenderer = null;
+      }
+    }
 
+    draw = () => {
+      if (this.visibleLength > 0) {
+        //the coordinate of the end of the ray that's visible so far
+        const visibleEndpoint = Vector.add(this.rayToRender.origin, p5.Vector.mult(this.rayToRender.direction, this.visibleLength));
+        s.push();
+        s.stroke(this.color);
+        s.strokeWeight(2);
 
+        s.line(this.rayToRender.origin.x, this.rayToRender.origin.y, visibleEndpoint.x, visibleEndpoint.y);
+        s.pop();
+
+        if(this.reflectionRenderer !== null) {
+          this.reflectionRenderer.draw();
+        }
+      }
+    }
+
+    animate = () => {
+      if (this.visibleLength < this.rayLength || this.renderContinuation) {
+        this.visibleLength = this.visibleLength + s.deltaTime * this.rayRevealSpeed, this.rayLength;
+
+        //if we aren't rendering a continuation, ensure the visible length does not exceed the length of the ray
+        if (!this.renderContinuation) {
+          this.visibleLength = Math.min(this.visibleLength, this.rayLength);
+        }
+      }
+      //when the visible length exceeds the ray length, render the next ray
+      if (this.reflectionRenderer !== null && this.visibleLength >= this.rayLength) {
+        this.reflectionRenderer.animate();
+      }
+    }
+  }
 
   //get mouse direction from the REAL gem position (center grid cell)
   let getMousePositionAtCell = (x, y) => {
@@ -50,22 +106,10 @@ let sketch1 = new p5(( s ) => {
   }
 
   let resetLightRay = (direction) => {
-    ray = new LightRay(gemPosition, direction);
+    ray = new LightRay(eyePosition, direction);
     ray.propagate(reflectiveSegments, 0);//start reflecting this ray off of the wall segments
+    rayRenderer = new LightRayRenderer(ray, eyeColor, true);
   }
-  
-  //reset ray when mouse is clicked
-  s.mouseClicked = () => {
-    resetLightRay(getMousePositionAtCell(centerCell, centerCell).sub(gemPosition));
-  }
-
-  s.setup = () => {
-    const canvasWidth = numCells * boxWidth;
-    const canvasHeight = numCells * boxHeight;
-    s.createCanvas(canvasWidth, canvasHeight);
-
-    resetLightRay(s.createVector(100, 200));
-  };
 
   //apply the appropriate transformation to render in the correct offset / flipping for a particular cell
   //NOTE!! apply pop() after grid cell rendering is complete 
@@ -86,53 +130,38 @@ let sketch1 = new p5(( s ) => {
     //at this point the coordinate system for the center cell is as expected and 0,0 is at the top left corner
   }
 
-  let renderBox = () => {
-    //render walls
-    s.rect(0, 0, boxWidth, wallThickness);//top wall
-
-    s.rect(0,                           boxHeight - wallThickness, boxWidth / 2 - boxOpeningSize / 2, wallThickness);//bottom wall 1
-    s.rect(boxWidth/2 + boxOpeningSize/2, boxHeight - wallThickness, boxWidth / 2 - boxOpeningSize / 2, wallThickness);//bottom wall 2
-
-    s.rect(0, 0, wallThickness, boxHeight);
-    s.rect(boxWidth - wallThickness, 0, wallThickness, boxHeight);
-    //render boundary black line
-    s.push();
-    s.noFill();
-    s.stroke(0);
-    s.rect(0, 0, boxWidth, boxHeight);
-    s.pop();
+  //reset ray when mouse is clicked
+  s.mouseClicked = () => {
+    resetLightRay(getMousePositionAtCell(centerCell, centerCell).sub(eyePosition));
   }
 
-  let drawLightRay = (ray) => {
-    pushGridCellTransformation(centerCell, centerCell);
-      
-      s.stroke(gemColor);
-      s.strokeWeight(3);
-      
-      let curRay = ray;
+  s.setup = () => {
+    const canvasWidth = numCells * boxWidth;
+    const canvasHeight = numCells * boxHeight;
+    s.createCanvas(canvasWidth, canvasHeight);
 
-      while(curRay !== null) {
-        const endPoint = curRay.getEndPoint();
-        s.line(curRay.origin.x, curRay.origin.y, endPoint.x, endPoint.y);
-        curRay = curRay.reflection;
-      } 
+    resetLightRay(s.createVector(100, 200));
 
+    //add segments forming a regular polygon to stop ray at gem
+    const collisionPolygonSides = 8;
+    const collisionPolygonRadius = gemSize / 2;
+    for(let i = 0; i < collisionPolygonSides; i ++) {
+      const thisAngle = (i / parseFloat(cllisionPolygonSides)) * Math.PI * 2;
+      const nextAngle = ((i+1) / parseFloat(cllisionPolygonSides)) * Math.PI * 2;
 
-    s.pop();
-  }
+      matteSegments.push(new Segment(
+        Math.cos(thisAngle) * collisionPolygonRadius, 
+        Math.sin(thisAngle) * collisionPolygonRadius, 
+        Math.cos(nextAngle) * collisionPolygonRadius, 
+        math.sin(nextAngle) * collisionPolygonRadius));
+    } 
+  };
 
   s.draw = () => {
     s.background(255);
 
-    drawLightRay(ray)
-    // //draw ray
-    // pushGridCellTransformation(centerCell, centerCell);
-    // ray.draw();
-    // ray.animate();
-    // s.pop();
 
-
-    //draw grid
+    //draw grid of reflections
     s.noStroke();
     for (let x = 0; x < numCells; x ++)
     {
@@ -143,17 +172,23 @@ let sketch1 = new p5(( s ) => {
 
         pushGridCellTransformation(x, y);
           const isRealBox = centeredX == 0 && centeredY == 0; //is this the real box? as opposed to the reflections
-          s.fill(wallColor);
+          //render box walls
+          s.push();
+          s.strokeWeight(3);
+          s.stroke(wallColor);
+          for (let wallSeg of reflectiveSegments) {
+            s.line(wallSeg.x1, wallSeg.y1, wallSeg.x2, wallSeg.y2)
+          }
+          s.pop();
           
-          renderBox();
-
           //draw gem
           s.push();
           s.fill(gemColor);
           s.ellipse(gemPosition.x, gemPosition.y, gemSize, gemSize)
           s.pop();   
           
-          //fill
+          //fill white box over reflected cells to make them appear transparent. 
+          //definitely wonky.. But p5 doesn't have a good way of layering transparency.  
           if (!isRealBox)
           {
             s.push();
@@ -166,7 +201,19 @@ let sketch1 = new p5(( s ) => {
       }
     }
 
-    
+    //draw stuff that only gets drawn once in the center
+    pushGridCellTransformation(centerCell, centerCell);
+      // draw ray
+      rayRenderer.animate();
+      rayRenderer.draw();
+
+      //draw eye
+      s.push();
+      s.fill(eyeColor);
+      s.ellipse(eyePosition.x, eyePosition.y, eyeSize, eyeSize)
+      s.pop();   
+
+    s.pop();
 
   };
 }, 'sketch1');
