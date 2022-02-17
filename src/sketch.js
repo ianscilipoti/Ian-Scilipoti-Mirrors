@@ -1,5 +1,6 @@
 import p5, {Vector} from 'p5'
-import {Segment, LightRay} from './lightRayTools.js'
+import {Segment, LightRay, extremelyLargeConst} from './lightRayTools.js'
+import {checkIntersection} from 'line-intersect';
 //TODO:
 //address inconsistencies with vectors and pairs of variables 
 //add ray renderer 
@@ -15,11 +16,15 @@ let sketch1 = new p5(( s ) => {
   const gemColor = s.color(255, 0, 0);
   const eyeColor = s.color(0, 0, 255);
 
+  //misc
+  const mirrorID = "mirror";
+  const gemID = "gem";
+
   //scene information
   const gemPosition = s.createVector(30, 20);
   const gemSize = 20;
 
-  const eyePosition = s.createVector(100, 140);
+  const eyePosition = s.createVector(100, 150);
   const eyeSize = 20;
 
   const reflectionRange = 2;//number of reflection cells to render on either side of real box
@@ -29,16 +34,20 @@ let sketch1 = new p5(( s ) => {
   const boxHeight = 150;
   const numCells = reflectionRange*2+1;//one cell at center than range on either side
   const boxOpeningSize = 50;
-  const wallThickness = 3;
+
+  let verticalFlipArrowLocations = [];//locations of arrows showing a flip
+  let horizontalFlipArrowLocations = [];//locations of arrows showing a flip
+
+  
 
   //segments that make up the wall
   const boxSegments = [
-    new Segment(0, 0, boxWidth, 0, true),//top segment
-    new Segment(boxWidth, 0, boxWidth, boxHeight, true),//right segment
-    new Segment(0, 0, 0, boxHeight, true),//left segment
+    new Segment(0, 0, boxWidth, 0, true, mirrorID),//top segment
+    new Segment(boxWidth, 0, boxWidth, boxHeight, true, mirrorID),//right segment
+    new Segment(0, 0, 0, boxHeight, true, mirrorID),//left segment
     
-    new Segment(0, boxHeight, boxWidth/2 - boxOpeningSize/2, boxHeight, true), //lower segments
-    new Segment(boxWidth/2 + boxOpeningSize/2, boxHeight, boxWidth, boxHeight, true),
+    new Segment(0, boxHeight, boxWidth/2 - boxOpeningSize/2, boxHeight, true, mirrorID), //lower segments
+    new Segment(boxWidth/2 + boxOpeningSize/2, boxHeight, boxWidth, boxHeight, true, mirrorID),
   ];
 
   let barrierSegments = [];//these will be populated in setup
@@ -49,52 +58,67 @@ let sketch1 = new p5(( s ) => {
   let ray;
   let rayRenderer;
   let rayContinuation;
+  let rayHitGem;
+
+  let traversedGridCells = {}; 
+  let gridCellVisibility = [];
 
 
   //a wrapper for a lightRay object. it allows for drawing and animating a light ray 
   class LightRayRenderer {
-    constructor(rayToRender, color, renderContinuation) {
-      this.visibleLength = 0;
+    constructor(rayToRender, renderContinuation) {
+      this.revealedLength = 0;
       this.rayToRender = rayToRender;
-      this.color = color;
       this.rayRevealSpeed = 0.4;
       this.rayLength = this.rayToRender.getLength();//cache these so they don't need to be calculated every frame
       this.totalRayLength = this.rayToRender.getTotalLength();
       this.renderContinuation = renderContinuation;
+      this.animationFinished = false;
 
       if (this.rayToRender.reflection !== null) {
-        this.reflectionRenderer = new LightRayRenderer(this.rayToRender.reflection, color, false);
+        this.reflectionRenderer = new LightRayRenderer(this.rayToRender.reflection, false);
       }
       else {
         this.reflectionRenderer = null;
       }
     }
 
-    draw = () => {
-      if (this.visibleLength > 0) {
+    draw = (color) => {
+      //only run draw code if the revealed length is > 0
+      if (this.revealedLength > 0) {
         //the coordinate of the end of the ray that's visible so far
-        const visibleEndpoint = Vector.add(this.rayToRender.origin, p5.Vector.mult(this.rayToRender.direction, this.visibleLength));
+        const visibleEndpoint = Vector.add(this.rayToRender.origin, Vector.mult(this.rayToRender.direction, Math.min(this.revealedLength, this.rayLength)));
+        const continuationEndpoint = Vector.add(this.rayToRender.origin, Vector.mult(this.rayToRender.direction, this.revealedLength));
         s.push();
-        s.stroke(this.color);
+        s.stroke(color);
         s.strokeWeight(2);
 
         s.line(this.rayToRender.origin.x, this.rayToRender.origin.y, visibleEndpoint.x, visibleEndpoint.y);
+        if (this.revealedLength > this.rayLength) {
+          s.stroke(128);
+          s.line(visibleEndpoint.x, visibleEndpoint.y, continuationEndpoint.x, continuationEndpoint.y);
+        }
         s.pop();
 
         if(this.reflectionRenderer !== null) {
-          this.reflectionRenderer.draw();
+          this.reflectionRenderer.draw(color);
         }
       }
     }
 
-    animate = () => {
+    animate = (animationFinishedCallback) => {
       const lengthToRender = this.renderContinuation ? this.totalRayLength : this.rayLength;
-      if (this.visibleLength < lengthToRender) {
-        this.visibleLength = Math.min(this.visibleLength + s.deltaTime * this.rayRevealSpeed, lengthToRender);
+      if (this.revealedLength < lengthToRender) {
+        this.revealedLength = Math.min(this.revealedLength + s.deltaTime * this.rayRevealSpeed, lengthToRender);
       }
       //when the visible length exceeds the ray length, render the next ray
-      if (this.reflectionRenderer !== null && this.visibleLength >= this.rayLength) {
-        this.reflectionRenderer.animate();
+      if (this.rayToRender.reflection !== null && this.revealedLength >= this.rayLength) {
+        this.reflectionRenderer.animate(animationFinishedCallback);
+      }
+      else if (!this.animationFinished && animationFinishedCallback){
+        animationFinishedCallback();
+        this.animationFinished = true;
+        //---------------------------------------------- need to cascade the finished animation flag back
       }
     }
   }
@@ -104,10 +128,66 @@ let sketch1 = new p5(( s ) => {
     return s.createVector(s.mouseX - boxWidth * x, s.mouseY - boxHeight * y);
   }
 
+  //used to key a dictionary of cells the ray passes through
+  let getCellID = (x, y) => {
+    return String(x) + String(y);
+  }
+
   let resetLightRay = (direction) => {
     ray = new LightRay(eyePosition, direction);
     ray.propagate(allSegments, 0);//start reflecting / colliding this ray off of the wall segments
-    rayRenderer = new LightRayRenderer(ray, eyeColor, !ray.isTermination);
+    rayRenderer = new LightRayRenderer(ray, !ray.isTermination);
+
+    rayHitGem = ray.getFinalSegmentID() === gemID;
+
+    const rayContinuationEndpoint = Vector.add(ray.origin, Vector.mult(ray.direction, ray.getTotalLength()));
+
+    const rayPixelOriginX = ray.origin.x + centerCell * boxWidth;
+    const rayPixelOriginY = ray.origin.y + centerCell * boxHeight;
+    const rayPixelEndpointX = rayContinuationEndpoint.x + centerCell * boxWidth;
+    const rayPixelEndpointY = rayContinuationEndpoint.y + centerCell * boxHeight;
+
+    traversedGridCells = {};
+    horizontalFlipArrowLocations = [];
+    verticalFlipArrowLocations = [];
+    
+    //Kinda ugly. Would prefer to use a variation of Bresenham's rasterization algorithm here but couldn't find something appropriate 
+    //instead calculate intersections through horizontals and verticals of the grid to see what cells the ray will pass through
+    for (let x = 1; x < numCells; x ++)
+    {
+        //check extended ray against a vertical line 
+        let result = checkIntersection(
+          x * boxWidth, 0, 
+          x * boxWidth, numCells * boxHeight, 
+          rayPixelOriginX, rayPixelOriginY, 
+          rayPixelEndpointX, rayPixelEndpointY);
+        if (result.type === 'intersecting'){
+          const indexY = Math.floor(result.point.y / boxHeight);
+
+          traversedGridCells[getCellID(x, indexY)] = true;
+          traversedGridCells[getCellID(x-1, indexY)] = true;
+
+          horizontalFlipArrowLocations.push(new Vector(x * boxWidth, indexY * boxHeight + boxHeight/2));
+        }
+    }
+    for (let y = 1; y < numCells-1; y ++)
+    {
+      //check extended ray against a horizontal line 
+      let result = checkIntersection(
+        0, y * boxHeight, 
+        numCells * boxWidth, y * boxHeight, 
+        rayPixelOriginX, rayPixelOriginY, 
+        rayPixelEndpointX, rayPixelEndpointY);
+
+      if (result.type === 'intersecting'){
+        const indexX = Math.floor(result.point.x / boxWidth);
+
+        traversedGridCells[getCellID(indexX, y, )] = true;
+        traversedGridCells[getCellID(indexX, y-1)] = true;
+
+        verticalFlipArrowLocations.push(new Vector(indexX * boxWidth + boxWidth/2, y * boxHeight));
+      }
+    }
   }
 
   //apply the appropriate transformation to render in the correct offset / flipping for a particular cell
@@ -134,21 +214,6 @@ let sketch1 = new p5(( s ) => {
     resetLightRay(getMousePositionAtCell(centerCell, centerCell).sub(eyePosition));
   }
 
-  s.addCircularBarrier = (x, y, radius) => {
-    //add segments forming a regular polygon to stop ray at gem
-    const collisionPolygonSides = 8;
-    for(let i = 0; i < collisionPolygonSides; i ++) {
-      const thisAngle = (i / parseFloat(collisionPolygonSides)) * Math.PI * 2;
-      const nextAngle = ((i+1) / parseFloat(collisionPolygonSides)) * Math.PI * 2;
-
-      barrierSegments.push(new Segment(
-        Math.cos(thisAngle) * radius + x, 
-        Math.sin(thisAngle) * radius + y, 
-        Math.cos(nextAngle) * radius + x, 
-        Math.sin(nextAngle) * radius + y, false));
-    }
-  }
-
   s.setup = () => {
     const canvasWidth = numCells * boxWidth;
     const canvasHeight = numCells * boxHeight;
@@ -156,7 +221,23 @@ let sketch1 = new p5(( s ) => {
 
     resetLightRay(s.createVector(100, 200));
 
-    s.addCircularBarrier(gemPosition.x, gemPosition.y, gemSize/2);
+    //adds a circular polygonal barrier made of segments to the matte segments list. 
+    const addCircularBarrier = (x, y, radius, id) => {
+      //add segments forming a regular polygon to stop ray at gem
+      const collisionPolygonSides = 16;
+      for (let i = 0; i < collisionPolygonSides; i ++) {
+        const thisAngle = (i / parseFloat(collisionPolygonSides)) * Math.PI * 2;
+        const nextAngle = ((i+1) / parseFloat(collisionPolygonSides)) * Math.PI * 2;
+
+        barrierSegments.push(new Segment(
+          Math.cos(thisAngle) * radius + x, 
+          Math.sin(thisAngle) * radius + y, 
+          Math.cos(nextAngle) * radius + x, 
+          Math.sin(nextAngle) * radius + y, false, id));
+      }
+    }
+
+    addCircularBarrier(gemPosition.x, gemPosition.y, gemSize/2, gemID);
     // s.addCircularBarrier(eyePosition.x, eyePosition.y, eyeSize/2);
 
     allSegments = boxSegments.concat(barrierSegments);
@@ -165,44 +246,50 @@ let sketch1 = new p5(( s ) => {
   s.draw = () => {
     s.background(255);
 
-
     //draw grid of reflections
     s.noStroke();
     for (let x = 0; x < numCells; x ++)
     {
-      for (let y = 0; y < numCells; y ++)
+      for (let y = 0; y < centerCell+1; y ++)
       {
+        const cellKey = getCellID(x, y);
         let centeredX = x - reflectionRange;//make the center cell with the "real" box be at x=0, y=0
         let centeredY = y - reflectionRange;
-
-        pushGridCellTransformation(x, y);
-          const isRealBox = centeredX == 0 && centeredY == 0; //is this the real box? as opposed to the reflections
-          //render box walls
-          s.push();
-          s.strokeWeight(3);
-          for (let wallSeg of boxSegments) {
-            s.stroke(wallSeg.reflective ? reflectiveWallColor : matteWallColor);
-            s.line(wallSeg.x1, wallSeg.y1, wallSeg.x2, wallSeg.y2)
-          }
-          s.pop();
-          
-          //draw gem
-          s.push();
-          s.fill(gemColor);
-          s.ellipse(gemPosition.x, gemPosition.y, gemSize, gemSize)
-          s.pop();   
-          
-          //fill white box over reflected cells to make them appear transparent. 
-          //definitely wonky.. But p5 doesn't have a good way of layering transparency.  
-          if (!isRealBox)
-          {
+        const isRealBox = centeredX == 0 && centeredY == 0; //is this the real box? as opposed to the reflections
+        
+        //make sure the ray passes through or the cell is the center cell to render
+        if (cellKey in traversedGridCells || isRealBox) {
+          //set transformation for this grid cell 
+          pushGridCellTransformation(x, y);
+            //render box walls
             s.push();
-            s.noStroke();
-            s.fill(255, 255, 255, 255 - reflectionVisibility * 255);
-            s.rect(0, 0, boxWidth, boxHeight);
+            s.strokeWeight(3);
+            for (let wallSeg of boxSegments) {
+              s.stroke(wallSeg.reflective ? reflectiveWallColor : matteWallColor);
+              s.line(wallSeg.x1, wallSeg.y1, wallSeg.x2, wallSeg.y2)
+            }
             s.pop();
-          }
-        s.pop();
+            
+            
+            //draw gem
+            s.push();
+            s.fill(gemColor);
+            s.ellipse(gemPosition.x, gemPosition.y, gemSize, gemSize)
+            s.pop();   
+            
+            //fill white box over reflected cells to make them appear transparent. 
+            //definitely wonky.. But p5 doesn't have a good way of layering transparency.  
+            if (!isRealBox)
+            {
+              s.push();
+              s.noStroke();
+              
+              s.fill(255, 255, 255, 255 - reflectionVisibility * 255);
+              s.rect(0, 0, boxWidth, boxHeight);
+              s.pop();
+            }
+          s.pop();
+        }
       }
     }
 
@@ -210,7 +297,13 @@ let sketch1 = new p5(( s ) => {
     pushGridCellTransformation(centerCell, centerCell);
       // draw ray
       rayRenderer.animate();
-      rayRenderer.draw();
+      if (rayHitGem) {
+        rayRenderer.draw(gemColor);
+      }
+      else {
+        rayRenderer.draw(128);
+      }
+      
 
       //draw eye
       s.push();
@@ -219,7 +312,41 @@ let sketch1 = new p5(( s ) => {
       s.pop();   
 
     s.pop();
+    
+    s.fill(0);
 
+    //render arrows showcasing a flip has happened  
+
+    const arrowSize = 10;
+    const stemOffset = 3;
+    for (let loc of verticalFlipArrowLocations) {
+      if (loc.y > centerCell * boxHeight + boxHeight/2) {//I don't render the reflections below the center cell, so don't render arrows either
+        continue;
+      }
+      s.triangle(
+        loc.x - arrowSize/2, loc.y + stemOffset, 
+        loc.x + arrowSize/2, loc.y + stemOffset, 
+        loc.x, loc.y + arrowSize);
+      s.triangle(
+        loc.x - arrowSize/2, loc.y - stemOffset, 
+        loc.x + arrowSize/2, loc.y - stemOffset, 
+        loc.x, loc.y - arrowSize);
+    }
+
+    for (let loc of horizontalFlipArrowLocations) {
+      if (loc.y > centerCell * boxHeight + boxHeight/2) {//I don't render the reflections below the center cell, so don't render arrows either
+        continue;
+      }
+      s.triangle(
+        loc.x + stemOffset, loc.y - arrowSize/2, 
+        loc.x + stemOffset, loc.y + arrowSize/2, 
+        loc.x + arrowSize, loc.y);
+      s.triangle(
+        loc.x - stemOffset, loc.y - arrowSize/2, 
+        loc.x - stemOffset, loc.y + arrowSize/2, 
+        loc.x - arrowSize, loc.y);
+    }
   };
+  
 }, 'sketch1');
 

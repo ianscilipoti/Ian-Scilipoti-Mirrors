@@ -2,15 +2,16 @@ import {checkIntersection, colinearPointWithinSegment} from 'line-intersect';
 import {Vector} from 'p5'
 
 const maxReflections = 20;//for safety 
-const extremelyLargeConst = 10000;
+export const extremelyLargeConst = 10000;
 
 export class Segment {
-    constructor(x1, y1, x2, y2, reflective) {
+    constructor(x1, y1, x2, y2, reflective, id) {
       this.x1 = x1;
       this.y1 = y1;
       this.x2 = x2;
       this.y2 = y2;
       this.reflective = reflective;
+      this.id = id;
     }
     //normal being orthogonal and facing left of the vector from point 1 to point 2 
     getNormal = () => {
@@ -27,6 +28,7 @@ export class LightRay {
         this.endPoint = Vector.add(this.origin, Vector.mult(this.direction, extremelyLargeConst));
         this.reflection = null;//the next segment formed if a reflection happens
         this.isTermination = false; //does this ray instance terminate (not bounce or go to infinity)
+        this.finalSegmentID = null;
     }
 
     propagate = (segments, numReflections, ignoreSegment) => {
@@ -58,6 +60,7 @@ export class LightRay {
             this.endPoint = nearestIntersection;
             if(!nearestIntersectedSegment.reflective) {
                 this.isTermination = true;
+                this.finalSegmentID = nearestIntersectedSegment.id;
             }
 
             if (numReflections < maxReflections && nearestIntersectedSegment.reflective) {
@@ -96,15 +99,27 @@ export class LightRay {
         }
     }
 
-    // doesTerminate = () => {
-    //     if (this.isTermination) {
-    //         return true;
-    //     }
-    //     else if (this.reflection !== null) {
-    //         return this.reflection.doesTerminate();
-    //     }
-    //     else {
-    //         return false;
-    //     }
-    // }
+    doesTerminate = () => {
+        if (this.isTermination) {
+            return true;
+        }
+        else if (this.reflection !== null) {
+            return this.reflection.doesTerminate();
+        }
+        else {
+            return false;
+        }
+    }
+
+    getFinalSegmentID = () => {
+        if (this.isTermination) {
+            return this.finalSegmentID;
+        }
+        else if (this.reflection !== null) {
+            return this.reflection.getFinalSegmentID();
+        }
+        else {
+            return null;
+        }
+    }
   }
