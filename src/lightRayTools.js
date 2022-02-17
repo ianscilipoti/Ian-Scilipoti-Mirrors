@@ -1,4 +1,4 @@
-import {checkIntersection, colinearPointWithinSegment} from 'line-intersect';
+import {checkIntersection} from 'line-intersect';
 import {Vector} from 'p5'
 
 const maxReflections = 20;//for safety 
@@ -57,7 +57,7 @@ export class LightRay {
         
         if (nearestIntersection !== null) {
             this.endPoint = nearestIntersection;
-            
+
             if(!nearestIntersectedSegment.reflective) {
                 this.isTermination = true;
                 this.finalSegmentID = nearestIntersectedSegment.id;
