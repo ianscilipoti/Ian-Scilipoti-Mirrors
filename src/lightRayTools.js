@@ -37,8 +37,6 @@ export class LightRay {
         let nearestIntersectedSegment = null;
         let nearestIntersection = null;
 
-        
-
         //calculate intersections and find closest intersection
         for (let seg of segments) {
             if (seg === ignoreSegment) {
@@ -48,6 +46,7 @@ export class LightRay {
             if (result.type === 'intersecting'){
                 const intersectionPoint = new Vector(result.point.x, result.point.y);
                 const intersectionDist = Vector.dist(this.origin, intersectionPoint);
+
                 if (intersectionDist < nearesetIntersectionDist) {
                     nearesetIntersectionDist = intersectionDist;
                     nearestIntersection = intersectionPoint;
@@ -58,6 +57,7 @@ export class LightRay {
         
         if (nearestIntersection !== null) {
             this.endPoint = nearestIntersection;
+            
             if(!nearestIntersectedSegment.reflective) {
                 this.isTermination = true;
                 this.finalSegmentID = nearestIntersectedSegment.id;
@@ -99,18 +99,7 @@ export class LightRay {
         }
     }
 
-    doesTerminate = () => {
-        if (this.isTermination) {
-            return true;
-        }
-        else if (this.reflection !== null) {
-            return this.reflection.doesTerminate();
-        }
-        else {
-            return false;
-        }
-    }
-
+    //gets the segment id where this ray terminated, returns null if this ray and its reflections doesn't terminate
     getFinalSegmentID = () => {
         if (this.isTermination) {
             return this.finalSegmentID;

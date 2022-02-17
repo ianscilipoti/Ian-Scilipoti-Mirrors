@@ -1,13 +1,8 @@
 import p5, {Vector} from 'p5'
 import {Segment, LightRay, extremelyLargeConst} from './lightRayTools.js'
 import {checkIntersection} from 'line-intersect';
-//TODO:
-//address inconsistencies with vectors and pairs of variables 
-//add ray renderer 
-//better transparency for reflections
-//fix getEndpoint in lightrayTools. doesn't make sense with ray definition
 
-let sketch1 = new p5(( s ) => {
+let mirrorsSketch = new p5(( s ) => {
   //color information
   const reflectiveWallColor = s.color(0, 0, 255);
   const matteWallColor = s.color(0, 125, 125);
@@ -18,39 +13,42 @@ let sketch1 = new p5(( s ) => {
 
   //misc
   const mirrorID = "mirror";
+  const wallID = "mirror";
   const gemID = "gem";
 
   //scene information
   const gemPosition = s.createVector(30, 20);
-  const gemSize = 20;
+  const gemSize = 15;
 
-  const eyePosition = s.createVector(100, 150);
-  const eyeSize = 20;
+  const eyePosition = s.createVector(75, 100);
+  const eyeSize = 15;
 
-  const reflectionRange = 2;//number of reflection cells to render on either side of real box
+  const reflectionRange = 5;//number of reflection cells to render on either side of real box
   const centerCell = reflectionRange;//renaming this for readability. the reflection range number is also the index of the center cell
 
-  const boxWidth = 200;
-  const boxHeight = 150;
+  const boxWidth = 150;
+  const boxHeight = 100;
   const numCells = reflectionRange*2+1;//one cell at center than range on either side
-  const boxOpeningSize = 50;
+  const boxOpeningSize = 25;
 
   let verticalFlipArrowLocations = [];//locations of arrows showing a flip
   let horizontalFlipArrowLocations = [];//locations of arrows showing a flip
 
   
 
-  //segments that make up the wall
+  //segments that make up the box
   const boxSegments = [
     new Segment(0, 0, boxWidth, 0, true, mirrorID),//top segment
     new Segment(boxWidth, 0, boxWidth, boxHeight, true, mirrorID),//right segment
     new Segment(0, 0, 0, boxHeight, true, mirrorID),//left segment
+
+    new Segment(20, 50, 40, 50, false, wallID), //matte wall
     
     new Segment(0, boxHeight, boxWidth/2 - boxOpeningSize/2, boxHeight, true, mirrorID), //lower segments
     new Segment(boxWidth/2 + boxOpeningSize/2, boxHeight, boxWidth, boxHeight, true, mirrorID),
   ];
 
-  let barrierSegments = [];//these will be populated in setup
+  let barrierSegments = [];//these will be populated in setup. These segments are used for collision with the gem
   let allSegments = [];//these will be populated in setup
 
 
@@ -66,17 +64,17 @@ let sketch1 = new p5(( s ) => {
 
   //a wrapper for a lightRay object. it allows for drawing and animating a light ray 
   class LightRayRenderer {
-    constructor(rayToRender, renderContinuation) {
+    constructor(ray, renderContinuation) {
       this.revealedLength = 0;
-      this.rayToRender = rayToRender;
+      this.ray = ray;
       this.rayRevealSpeed = 0.4;
-      this.rayLength = this.rayToRender.getLength();//cache these so they don't need to be calculated every frame
-      this.totalRayLength = this.rayToRender.getTotalLength();
+      this.rayLength = this.ray.getLength();//cache these so they don't need to be calculated every frame
+      this.totalRayLength = this.ray.getTotalLength();
       this.renderContinuation = renderContinuation;
       this.animationFinished = false;
 
-      if (this.rayToRender.reflection !== null) {
-        this.reflectionRenderer = new LightRayRenderer(this.rayToRender.reflection, false);
+      if (this.ray.reflection !== null) {
+        this.reflectionRenderer = new LightRayRenderer(this.ray.reflection, false);
       }
       else {
         this.reflectionRenderer = null;
@@ -87,16 +85,17 @@ let sketch1 = new p5(( s ) => {
       //only run draw code if the revealed length is > 0
       if (this.revealedLength > 0) {
         //the coordinate of the end of the ray that's visible so far
-        const visibleEndpoint = Vector.add(this.rayToRender.origin, Vector.mult(this.rayToRender.direction, Math.min(this.revealedLength, this.rayLength)));
-        const continuationEndpoint = Vector.add(this.rayToRender.origin, Vector.mult(this.rayToRender.direction, this.revealedLength));
+        const visibleEndpoint = Vector.add(this.ray.origin, Vector.mult(this.ray.direction, Math.min(this.revealedLength, this.rayLength)));
+        const continuationEndpoint = Vector.add(this.ray.origin, Vector.mult(this.ray.direction, this.revealedLength));
         s.push();
         s.stroke(color);
         s.strokeWeight(2);
 
-        s.line(this.rayToRender.origin.x, this.rayToRender.origin.y, visibleEndpoint.x, visibleEndpoint.y);
+        s.line(this.ray.origin.x, this.ray.origin.y, visibleEndpoint.x, visibleEndpoint.y);
         if (this.revealedLength > this.rayLength) {
-          s.stroke(128);
+          s.drawingContext.setLineDash([2, 5]);
           s.line(visibleEndpoint.x, visibleEndpoint.y, continuationEndpoint.x, continuationEndpoint.y);
+          s.drawingContext.setLineDash([]);
         }
         s.pop();
 
@@ -112,7 +111,7 @@ let sketch1 = new p5(( s ) => {
         this.revealedLength = Math.min(this.revealedLength + s.deltaTime * this.rayRevealSpeed, lengthToRender);
       }
       //when the visible length exceeds the ray length, render the next ray
-      if (this.rayToRender.reflection !== null && this.revealedLength >= this.rayLength) {
+      if (this.ray.reflection !== null && this.revealedLength >= this.rayLength) {
         this.reflectionRenderer.animate(animationFinishedCallback);
       }
       else if (!this.animationFinished && animationFinishedCallback){
@@ -150,7 +149,7 @@ let sketch1 = new p5(( s ) => {
     traversedGridCells = {};
     horizontalFlipArrowLocations = [];
     verticalFlipArrowLocations = [];
-    
+
     //Kinda ugly. Would prefer to use a variation of Bresenham's rasterization algorithm here but couldn't find something appropriate 
     //instead calculate intersections through horizontals and verticals of the grid to see what cells the ray will pass through
     for (let x = 1; x < numCells; x ++)
@@ -161,6 +160,7 @@ let sketch1 = new p5(( s ) => {
           x * boxWidth, numCells * boxHeight, 
           rayPixelOriginX, rayPixelOriginY, 
           rayPixelEndpointX, rayPixelEndpointY);
+
         if (result.type === 'intersecting'){
           const indexY = Math.floor(result.point.y / boxHeight);
 
@@ -170,7 +170,7 @@ let sketch1 = new p5(( s ) => {
           horizontalFlipArrowLocations.push(new Vector(x * boxWidth, indexY * boxHeight + boxHeight/2));
         }
     }
-    for (let y = 1; y < numCells-1; y ++)
+    for (let y = 1; y < numCells; y ++)
     {
       //check extended ray against a horizontal line 
       let result = checkIntersection(
@@ -191,8 +191,8 @@ let sketch1 = new p5(( s ) => {
   }
 
   //apply the appropriate transformation to render in the correct offset / flipping for a particular cell
-  //NOTE!! apply pop() after grid cell rendering is complete 
-  //x: x coord of the cell, assume x=0 is not flipped
+  //NOTE!! apply pop() after grid cell rendering is complete as this function pushes a transformation 
+  //x: x coord of the cell, assume x=0,y=0 is not flipped horizontally or vertically
   let pushGridCellTransformation = (x, y) => {
     //---------not ideal.. recalculating this value here
     let centeredX = x - reflectionRange;//make the non-reflection cell indexed at x=0, y=0
@@ -221,7 +221,7 @@ let sketch1 = new p5(( s ) => {
 
     resetLightRay(s.createVector(100, 200));
 
-    //adds a circular polygonal barrier made of segments to the matte segments list. 
+    //adds a circular polygonal barrier made of segments to the barrier segments list. 
     const addCircularBarrier = (x, y, radius, id) => {
       //add segments forming a regular polygon to stop ray at gem
       const collisionPolygonSides = 16;
@@ -315,7 +315,8 @@ let sketch1 = new p5(( s ) => {
     
     s.fill(0);
 
-    //render arrows showcasing a flip has happened  
+    //Render arrows showcasing a flip has happened. Would be easier to use some texture here
+    //instead of rendering so many triangles!
 
     const arrowSize = 10;
     const stemOffset = 3;

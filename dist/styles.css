@@ -1,14 +1,14 @@
-.lessonContainer {
-    /* background-color: red; */
-    width: 65%;
-    min-width: 300px;
-    margin:auto;
-}
-
-.psketch {
-    margin:auto;
-}
-
 h1 {
     text-align: center;
 }
+
+canvas {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 50%;
+    height: 50%;
+    padding: 20px;
+    text-align: center;
+  }
