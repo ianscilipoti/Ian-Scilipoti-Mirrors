@@ -24,7 +24,7 @@ let mirrorsSketch = new p5(( s ) => {
   const eyePosition = s.createVector(75, 100);
   const eyeSize = 15;
 
-  const reflectionRange = 5;//number of reflection cells to render on either side of real box
+  const reflectionRange = 3;//number of reflection cells to render on either side of real box
   const centerCell = reflectionRange;//renaming this for readability. the reflection range number is also the index of the center cell
 
   const boxWidth = 150;
@@ -219,6 +219,8 @@ let mirrorsSketch = new p5(( s ) => {
     const canvasWidth = numCells * boxWidth;
     const canvasHeight = numCells * boxHeight;
     s.createCanvas(canvasWidth, canvasHeight);
+    s.textAlign(s.CENTER, s.CENTER);
+    s.textSize(20);
 
     resetLightRay(s.createVector(100, 200));
 
@@ -272,10 +274,8 @@ let mirrorsSketch = new p5(( s ) => {
             s.pop();
             
             //draw gem
-            s.push();
             s.fill(gemColor);
             s.ellipse(gemPosition.x, gemPosition.y, gemSize, gemSize)
-            s.pop();   
             
             //fill white box over reflected cells to make them appear transparent. 
             //definitely wonky.. But p5 doesn't have a good way of creating layers with different transparency that I know of.  
@@ -304,14 +304,18 @@ let mirrorsSketch = new p5(( s ) => {
         rayRenderer.draw(128);
       }
       
+      // s.push();
+      
+      s.fill(0);
+      s.text("Click to change the angle of the ray. What angles cause the ray to bounce 3 times before hitting the red circle?", boxWidth/2, boxHeight * 2);
 
+      s.text("Think about how many mirrors the ray and its continuation (shown as a dotted line) pass through.", boxWidth/2, boxHeight * 2 + 40);
+      // s.pop();
       //draw eye
-      s.push();
       s.fill(eyeColor);
       s.triangle(eyePosition.x - eyeSize, eyePosition.y, eyePosition.x + eyeSize, eyePosition.y, eyePosition.x, eyePosition.y + eyeSize*2)
       s.fill(0);
       s.ellipse(eyePosition.x, eyePosition.y, eyeSize, eyeSize);
-      s.pop();   
 
     s.pop();
     
@@ -350,6 +354,8 @@ let mirrorsSketch = new p5(( s ) => {
         loc.x - arrowSize, loc.y);
     }
   };
+
+  
   
 }, 'sketch1');
 
