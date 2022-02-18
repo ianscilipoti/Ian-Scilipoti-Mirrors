@@ -15,13 +15,14 @@ let mirrorsSketch = new p5(( s ) => {
   const mirrorID = "mirror";
   const wallID = "mirror";
   const gemID = "gem";
+  const eyeID = "eye";
 
   //scene information
   const gemPosition = s.createVector(30, 20);
   const gemSize = 15;
 
   const eyePosition = s.createVector(75, 100);
-  const eyeSize = 15;
+  const eyeSize = 25;
 
   const reflectionRange = 5;//number of reflection cells to render on either side of real box
   const centerCell = reflectionRange;//renaming this for readability. the reflection range number is also the index of the center cell
@@ -134,7 +135,7 @@ let mirrorsSketch = new p5(( s ) => {
 
   let resetLightRay = (direction) => {
     ray = new LightRay(eyePosition, direction);
-    ray.propagate(allSegments, 0);//start reflecting / colliding this ray off of the wall segments
+    ray.propagate(allSegments, 0, allSegments.filter(seg => seg.id === eyeID));//start reflecting / colliding this ray off of the wall segments
     rayRenderer = new LightRayRenderer(ray, !ray.isTermination);
 
     rayHitGem = ray.getFinalSegmentID() === gemID;
@@ -238,7 +239,7 @@ let mirrorsSketch = new p5(( s ) => {
     }
 
     addCircularBarrier(gemPosition.x, gemPosition.y, gemSize/2, gemID);
-    // s.addCircularBarrier(eyePosition.x, eyePosition.y, eyeSize/2);
+    addCircularBarrier(eyePosition.x, eyePosition.y, eyeSize/2, eyeID);
 
     allSegments = boxSegments.concat(barrierSegments);
   };
@@ -270,7 +271,6 @@ let mirrorsSketch = new p5(( s ) => {
             }
             s.pop();
             
-            
             //draw gem
             s.push();
             s.fill(gemColor);
@@ -278,7 +278,7 @@ let mirrorsSketch = new p5(( s ) => {
             s.pop();   
             
             //fill white box over reflected cells to make them appear transparent. 
-            //definitely wonky.. But p5 doesn't have a good way of layering transparency.  
+            //definitely wonky.. But p5 doesn't have a good way of creating layers with different transparency that I know of.  
             if (!isRealBox)
             {
               s.push();
@@ -308,7 +308,9 @@ let mirrorsSketch = new p5(( s ) => {
       //draw eye
       s.push();
       s.fill(eyeColor);
-      s.ellipse(eyePosition.x, eyePosition.y, eyeSize, eyeSize)
+      s.triangle(eyePosition.x - eyeSize/2, eyePosition.y, eyePosition.x + eyeSize/2, eyePosition.y, eyePosition.x, eyePosition.y + eyeSize)
+      s.fill(0);
+      s.ellipse(eyePosition.x, eyePosition.y, eyeSize/2, eyeSize/2);
       s.pop();   
 
     s.pop();

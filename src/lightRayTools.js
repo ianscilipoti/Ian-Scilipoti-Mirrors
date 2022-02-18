@@ -31,7 +31,7 @@ export class LightRay {
         this.finalSegmentID = null;
     }
 
-    propagate = (segments, numReflections, ignoreSegment) => {
+    propagate = (segments, numReflections, ignoreSegments) => {
               
         let nearesetIntersectionDist = extremelyLargeConst;
         let nearestIntersectedSegment = null;
@@ -39,7 +39,7 @@ export class LightRay {
 
         //calculate intersections and find closest intersection
         for (let seg of segments) {
-            if (seg === ignoreSegment) {
+            if (ignoreSegments !== undefined && ignoreSegments.includes(seg)) {
                 continue;//used to avoid ray intersecting with most recently intersected segment
             }
             const result = checkIntersection(seg.x1, seg.y1, seg.x2, seg.y2, this.origin.x, this.origin.y, this.endPoint.x, this.endPoint.y);
@@ -67,7 +67,7 @@ export class LightRay {
                 const normal = nearestIntersectedSegment.getNormal();
                 const newDirection = this.direction.copy().reflect(normal);
                 this.reflection = new LightRay(nearestIntersection, newDirection);
-                this.reflection.propagate(segments, numReflections+1, nearestIntersectedSegment);
+                this.reflection.propagate(segments, numReflections+1, [nearestIntersectedSegment]);
             }
         }
     }
