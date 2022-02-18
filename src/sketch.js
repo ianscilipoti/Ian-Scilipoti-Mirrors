@@ -35,8 +35,6 @@ let mirrorsSketch = new p5(( s ) => {
   let verticalFlipArrowLocations = [];//locations of arrows showing a flip
   let horizontalFlipArrowLocations = [];//locations of arrows showing a flip
 
-  
-
   //segments that make up the box
   const boxSegments = [
     new Segment(0, 0, boxWidth, 0, true, mirrorID),//top segment
@@ -52,12 +50,13 @@ let mirrorsSketch = new p5(( s ) => {
   let barrierSegments = [];//these will be populated in setup. These segments are used for collision with the gem
   let allSegments = [];//these will be populated in setup
 
-
   //interaction
   let ray;
   let rayRenderer;
   let rayContinuation;
-  let rayHitGem;
+  let rayHitGem; //did the ray hit the gem?
+
+  const rayRevealSpeed = 0.4;
 
   let traversedGridCells = {}; 
   let gridCellVisibility = [];
@@ -65,14 +64,14 @@ let mirrorsSketch = new p5(( s ) => {
 
   //a wrapper for a lightRay object. it allows for drawing and animating a light ray 
   class LightRayRenderer {
+    //ray: the ray to render
+    //renderContinuation: bool, should the continuation of the ray be rendered?
     constructor(ray, renderContinuation) {
       this.revealedLength = 0;
       this.ray = ray;
-      this.rayRevealSpeed = 0.4;
       this.rayLength = this.ray.getLength();//cache these so they don't need to be calculated every frame
       this.totalRayLength = this.ray.getTotalLength();
       this.renderContinuation = renderContinuation;
-      this.animationFinished = false;
 
       if (this.ray.reflection !== null) {
         this.reflectionRenderer = new LightRayRenderer(this.ray.reflection, false);
@@ -106,19 +105,14 @@ let mirrorsSketch = new p5(( s ) => {
       }
     }
 
-    animate = (animationFinishedCallback) => {
+    animate = () => {
       const lengthToRender = this.renderContinuation ? this.totalRayLength : this.rayLength;
       if (this.revealedLength < lengthToRender) {
-        this.revealedLength = Math.min(this.revealedLength + s.deltaTime * this.rayRevealSpeed, lengthToRender);
+        this.revealedLength = Math.min(this.revealedLength + s.deltaTime * rayRevealSpeed, lengthToRender);
       }
       //when the visible length exceeds the ray length, render the next ray
       if (this.ray.reflection !== null && this.revealedLength >= this.rayLength) {
-        this.reflectionRenderer.animate(animationFinishedCallback);
-      }
-      else if (!this.animationFinished && animationFinishedCallback){
-        animationFinishedCallback();
-        this.animationFinished = true;
-        //---------------------------------------------- need to cascade the finished animation flag back
+        this.reflectionRenderer.animate();
       }
     }
   }
@@ -136,7 +130,8 @@ let mirrorsSketch = new p5(( s ) => {
   let resetLightRay = (direction) => {
     ray = new LightRay(eyePosition, direction);
     ray.propagate(allSegments, 0, allSegments.filter(seg => seg.id === eyeID));//start reflecting / colliding this ray off of the wall segments
-    rayRenderer = new LightRayRenderer(ray, !ray.isTermination);
+    const doRenderContinuation = !ray.isTermination;//don't render the continuation if the initial ray "segment" terminates (before hitting a mirror)
+    rayRenderer = new LightRayRenderer(ray, doRenderContinuation);
 
     rayHitGem = ray.getFinalSegmentID() === gemID;
 
@@ -195,13 +190,12 @@ let mirrorsSketch = new p5(( s ) => {
   //NOTE!! apply pop() after grid cell rendering is complete as this function pushes a transformation 
   //x: x coord of the cell, assume x=0,y=0 is not flipped horizontally or vertically
   let pushGridCellTransformation = (x, y) => {
-    //---------not ideal.. recalculating this value here
     let centeredX = x - reflectionRange;//make the non-reflection cell indexed at x=0, y=0
     let centeredY = y - reflectionRange;
 
     //move coordinate system to cell position and adjust scale to flip 
     s.push();
-    let xScale = (1 - (centeredX & 1)) * 2 - 1;
+    let xScale = (1 - (centeredX & 1)) * 2 - 1;//-1, or 1 depending on if the coordinate is even/odd
     let yScale = (1 - (centeredY & 1)) * 2 - 1;   
 
     s.translate(x * boxWidth + boxWidth / 2, y * boxHeight + boxHeight / 2);
@@ -221,8 +215,6 @@ let mirrorsSketch = new p5(( s ) => {
     s.createCanvas(canvasWidth, canvasHeight);
     s.textAlign(s.CENTER, s.CENTER);
     s.textSize(20);
-
-    resetLightRay(s.createVector(100, 200));
 
     //adds a circular polygonal barrier made of segments to the barrier segments list. 
     const addCircularBarrier = (x, y, radius, id) => {
@@ -244,6 +236,8 @@ let mirrorsSketch = new p5(( s ) => {
     addCircularBarrier(eyePosition.x, eyePosition.y, eyeSize/2, eyeID);
 
     allSegments = boxSegments.concat(barrierSegments);
+
+    resetLightRay(s.createVector(100, -200));
   };
 
   s.draw = () => {
@@ -253,6 +247,7 @@ let mirrorsSketch = new p5(( s ) => {
     s.noStroke();
     for (let x = 0; x < numCells; x ++)
     {
+      //don't render anything below the center cell. An optimization since the ray can't bounce off any mirrors when it faces downward.
       for (let y = 0; y < centerCell+1; y ++)
       {
         const cellKey = getCellID(x, y);
@@ -260,7 +255,7 @@ let mirrorsSketch = new p5(( s ) => {
         let centeredY = y - reflectionRange;
         const isRealBox = centeredX == 0 && centeredY == 0; //is this the real box? as opposed to the reflections
         
-        //make sure the ray passes through or the cell is the center cell to render
+        //make sure the ray passes through this cell or the cell is at the center
         if (cellKey in traversedGridCells || isRealBox) {
           //set transformation for this grid cell 
           pushGridCellTransformation(x, y);
@@ -281,12 +276,8 @@ let mirrorsSketch = new p5(( s ) => {
             //definitely wonky.. But p5 doesn't have a good way of creating layers with different transparency that I know of.  
             if (!isRealBox)
             {
-              s.push();
-              s.noStroke();
-              
               s.fill(255, 255, 255, 255 - reflectionVisibility * 255);
               s.rect(0, 0, boxWidth, boxHeight);
-              s.pop();
             }
           s.pop();
         }
@@ -303,14 +294,12 @@ let mirrorsSketch = new p5(( s ) => {
       else {
         rayRenderer.draw(128);
       }
-      
-      // s.push();
-      
+            
       s.fill(0);
       s.text("Click to change the angle of the ray. What angles cause the ray to bounce 3 times before hitting the red circle?", boxWidth/2, boxHeight * 2);
 
       s.text("Think about how many mirrors the ray and its continuation (shown as a dotted line) pass through.", boxWidth/2, boxHeight * 2 + 40);
-      // s.pop();
+
       //draw eye
       s.fill(eyeColor);
       s.triangle(eyePosition.x - eyeSize, eyePosition.y, eyePosition.x + eyeSize, eyePosition.y, eyePosition.x, eyePosition.y + eyeSize*2)
@@ -354,8 +343,5 @@ let mirrorsSketch = new p5(( s ) => {
         loc.x - arrowSize, loc.y);
     }
   };
-
-  
-  
 }, 'sketch1');
 
