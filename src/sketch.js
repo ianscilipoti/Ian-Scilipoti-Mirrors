@@ -296,7 +296,7 @@ let mirrorsSketch = new p5(( s ) => {
       }
             
       s.fill(0);
-      s.text("Click to change the angle of the ray. What angles cause the ray to bounce 3 times before hitting the red circle?", boxWidth/2, boxHeight * 2);
+      s.text("Click to change the angle of the ray. What angles cause the ray to bounce two times before hitting the red circle?", boxWidth/2, boxHeight * 2);
 
       s.text("Think about how many mirrors the ray and its continuation (shown as a dotted line) pass through.", boxWidth/2, boxHeight * 2 + 40);
 
