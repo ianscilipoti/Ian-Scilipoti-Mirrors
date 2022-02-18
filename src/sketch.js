@@ -9,7 +9,7 @@ let mirrorsSketch = new p5(( s ) => {
   const bgColor = s.color(255, 255, 255);
   const reflectionVisibility = 0.1;
   const gemColor = s.color(255, 0, 0);
-  const eyeColor = s.color(0, 0, 255);
+  const eyeColor = s.color(0, 128, 200);
 
   //misc
   const mirrorID = "mirror";
@@ -22,7 +22,7 @@ let mirrorsSketch = new p5(( s ) => {
   const gemSize = 15;
 
   const eyePosition = s.createVector(75, 100);
-  const eyeSize = 25;
+  const eyeSize = 15;
 
   const reflectionRange = 5;//number of reflection cells to render on either side of real box
   const centerCell = reflectionRange;//renaming this for readability. the reflection range number is also the index of the center cell
@@ -308,9 +308,9 @@ let mirrorsSketch = new p5(( s ) => {
       //draw eye
       s.push();
       s.fill(eyeColor);
-      s.triangle(eyePosition.x - eyeSize/2, eyePosition.y, eyePosition.x + eyeSize/2, eyePosition.y, eyePosition.x, eyePosition.y + eyeSize)
+      s.triangle(eyePosition.x - eyeSize, eyePosition.y, eyePosition.x + eyeSize, eyePosition.y, eyePosition.x, eyePosition.y + eyeSize*2)
       s.fill(0);
-      s.ellipse(eyePosition.x, eyePosition.y, eyeSize/2, eyeSize/2);
+      s.ellipse(eyePosition.x, eyePosition.y, eyeSize, eyeSize);
       s.pop();   
 
     s.pop();
@@ -320,7 +320,7 @@ let mirrorsSketch = new p5(( s ) => {
     //Render arrows showcasing a flip has happened. Would be easier to use some texture here
     //instead of rendering so many triangles!
 
-    const arrowSize = 10;
+    const arrowSize = 8;
     const stemOffset = 3;
     for (let loc of verticalFlipArrowLocations) {
       if (loc.y > centerCell * boxHeight + boxHeight/2) {//I don't render the reflections below the center cell, so don't render arrows either
